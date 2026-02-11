@@ -388,8 +388,11 @@
                 function onMouseMove(moveEvent) {
                     // 注意：这里的 dx 是屏幕像素差，直接加到 left 上是正确的
                     // 因为 transform 只是移动了坐标系原点，单位长度没变
-                    const dx = moveEvent.clientX - startX;
-                    const dy = moveEvent.clientY - startY;
+                    // 修正：实际上 scale 后，坐标系的单位长度变了！
+                    // 如果 scale=2 (放大2倍)，鼠标移动 100px，在画布坐标系里其实只移动了 50px
+                    // 所以必须除以 scale
+                    const dx = (moveEvent.clientX - startX) / scale;
+                    const dy = (moveEvent.clientY - startY) / scale;
                     card.style.left = (initialLeft + dx) + 'px';
                     card.style.top = (initialTop + dy) + 'px';
                 }
@@ -415,8 +418,8 @@
                  const startHeight = parseInt(document.defaultView.getComputedStyle(card).height);
  
                  function onMouseMove(moveEvent) {
-                     const dx = moveEvent.clientX - startX;
-                     const dy = moveEvent.clientY - startY;
+                     const dx = (moveEvent.clientX - startX) / scale;
+                     const dy = (moveEvent.clientY - startY) / scale;
                      const newWidth = startWidth + dx;
                      const newHeight = startHeight + dy;
                      if (newWidth > 150) card.style.width = newWidth + 'px';
