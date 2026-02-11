@@ -341,6 +341,15 @@
         // 画布缩放比例 (Canvas Zoom)
         let scale = 1;
 
+        // 全局定义 updateCanvas，确保任何地方都能调用
+        function updateCanvas() {
+            const board = document.getElementById('board');
+            const body = document.body;
+            board.style.transform = `scale(${scale}) translate(${panX}px, ${panY}px)`;
+            body.style.backgroundSize = `${20 * scale}px ${20 * scale}px`;
+            body.style.backgroundPosition = `${panX * scale}px ${panY * scale}px`;
+        }
+
         function addCard() {
             const board = document.getElementById('board');
             const card = document.createElement('div');
@@ -493,22 +502,7 @@
                 updateCanvas();
             }
 
-            // 抽离更新函数
-            function updateCanvas() {
-                // 关键：同时应用平移和缩放
-                // 注意顺序：先平移(translate)，再缩放(scale)，否则坐标系会乱
-                // 但由于我们是移动视口，实际上是对 board 进行变换
-                // 这里的 translate 是基于 scale 后的坐标系的吗？
-                // CSS transform order: right to left applied? No, left to right.
-                // 这里的逻辑是：board 的原点先移到 (panX, panY)，然后整体放大 scale 倍
-                // 但 CSS 的 transform-origin 默认是 50% 50%，我们之前设为了 0 0
-                
-                board.style.transform = `scale(${scale}) translate(${panX}px, ${panY}px)`;
-                
-                // 背景网格缩放
-                body.style.backgroundSize = `${20 * scale}px ${20 * scale}px`;
-                body.style.backgroundPosition = `${panX * scale}px ${panY * scale}px`;
-            }
+            // (已移除内部的 updateCanvas 定义，改为使用全局的)
         }
 
         // 核心逻辑1：移动卡片 (无需修改，绝对定位天然支持)
@@ -768,8 +762,17 @@
                         localStorage.setItem('sticky_notes_data', JSON.stringify(data.cards));
                         localStorage.setItem('sticky_canvas_state', JSON.stringify(data.canvas || {}));
                         
-                        // 刷新页面以加载新数据
-                        location.reload();
+                        // 关键修复：写入后立刻手动调用 loadFromStorage 重新渲染，而不是依赖 reload
+                        // 因为某些浏览器/环境下 reload 可能会导致 LocalStorage 写入尚未完成就被打断
+                        // 或者 reload 后数据虽然有了，但可能被某些初始化逻辑覆盖
+                        
+                        // 1. 清空当前视图
+                        document.getElementById('board').innerHTML = '';
+                        
+                        // 2. 重新加载数据
+                        loadFromStorage();
+                        
+                        alert('导入成功！');
                     }
                 } catch (err) {
                     alert('导入失败：文件格式错误或已损坏\n' + err.message);
