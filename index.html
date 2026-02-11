@@ -17,6 +17,14 @@
             height: 100vh;
             overflow: hidden; /* 隐藏滚动条，完全由 JS 接管视野 */
             cursor: grab; /* 鼠标变成抓手，暗示背景可以拖动 */
+            user-select: none; /* 关键：禁止选中页面上的文字，防止拖拽时意外变蓝 */
+            -webkit-user-select: none; /* 兼容 Safari/Chrome */
+        }
+
+        /* 但是，输入框里的文字必须能选中，否则没法编辑了 */
+        textarea {
+            user-select: text;
+            -webkit-user-select: text;
         }
         
         body.grabbing {
