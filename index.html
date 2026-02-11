@@ -89,6 +89,115 @@
             border-color: #fecaca;
         }
 
+        /* 右上角抽屉菜单容器 - 改为右贴边模式 */
+        .drawer-menu {
+            position: fixed;
+            top: 20px;
+            right: 0; /* 紧贴右边 */
+            z-index: 2000;
+            display: flex;
+            align-items: flex-start; /* 顶部对齐 */
+            pointer-events: auto;
+        }
+
+        /* 主按钮（箭头标签）- 半圆贴边效果 */
+        .drawer-toggle {
+            width: 30px; /* 窄一点，更像标签 */
+            height: 50px;
+            background: white;
+            /* 左圆角，右直角 */
+            border-radius: 12px 0 0 12px; 
+            box-shadow: -4px 4px 12px rgba(0,0,0,0.1);
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 16px; /* 箭头小一点 */
+            color: #64748b;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            z-index: 2002;
+            position: relative;
+            left: 0; 
+        }
+        
+        /* 抽屉内容列表 - 从右侧滑出 */
+        .drawer-content {
+            position: absolute;
+            top: 0;
+            right: 0; /* 初始状态：完全藏在屏幕右边 */
+            width: 160px; /* 固定宽度 */
+            height: auto;
+            min-height: 50px; /* 保证高度至少和按钮一样 */
+            background: white;
+            border-radius: 12px 0 0 12px; /* 左上角和左下角都圆角 */
+            box-shadow: -8px 8px 24px rgba(0,0,0,0.12);
+            padding: 12px;
+            display: flex;
+            flex-direction: column;
+            gap: 8px;
+            
+            /* 动画初始状态：完全移出屏幕 */
+            transform: translateX(100%); 
+            opacity: 1; 
+            pointer-events: auto;
+            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+        }
+
+        /* 悬停在整个容器上时，展开抽屉 */
+        .drawer-menu:hover .drawer-content {
+            transform: translateX(0); /* 滑入屏幕 */
+        }
+
+        /* 当抽屉展开时，按钮融合 */
+        .drawer-menu:hover .drawer-toggle {
+            transform: translateX(-160px); /* 跟随内容宽度移动 */
+            width: 0; /* 宽度变0，让它消失 */
+            padding: 0;
+            opacity: 0; /* 彻底隐形 */
+            pointer-events: none; /* 防止误触 */
+        }
+
+        /* 抽屉展开时，给内容区加个左边框装饰，看起来像是一体的 */
+        .drawer-menu:hover .drawer-content::before {
+            content: '>'; /* 变成向右箭头，提示可以收起（虽然是自动的） */
+            position: absolute;
+            left: -20px;
+            top: 15px;
+            color: #94a3b8;
+            font-weight: bold;
+            display: none; /* 暂时隐藏，简洁为主 */
+        }
+
+        /* 抽屉里的按钮样式 */
+
+        /* 抽屉里的按钮样式 */
+        .drawer-btn {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            padding: 10px 16px;
+            border: none;
+            background: transparent;
+            color: #4b5563;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 8px;
+            white-space: nowrap; /* 防止文字换行 */
+            transition: background 0.2s;
+            text-align: left;
+            width: 100%;
+        }
+
+        .drawer-btn:hover {
+            background-color: #f3f4f6;
+            color: #2563eb;
+        }
+
+        .drawer-btn span {
+            font-size: 18px;
+        }
+
         /* 画布容器：承载所有卡片，负责整体平移 */
         #board {
             position: absolute;
@@ -193,9 +302,33 @@
 <body>
 
     <div class="toolbar">
-        <button class="primary" onclick="addCard()">+ 新建便利贴</button>
-        <button class="secondary" onclick="clearAll()">🗑️ 清空</button>
+        <button class="primary" onclick="addCard()">
+            <span>✨</span> 新建便利贴
+        </button>
+        <button class="secondary" onclick="clearAll()">
+            <span>🗑️</span> 清空
+        </button>
     </div>
+
+    <!-- 右上角悬浮抽屉菜单 -->
+    <div class="drawer-menu">
+        <!-- 悬浮标签 (箭头) -->
+        <div class="drawer-toggle">
+            ◀
+        </div>
+        <!-- 抽屉内容 -->
+        <div class="drawer-content">
+            <button class="drawer-btn" onclick="exportData()">
+                <span>💾</span> 导出备份
+            </button>
+            <button class="drawer-btn" onclick="importData()">
+                <span>📂</span> 导入备份
+            </button>
+        </div>
+    </div>
+
+    <!-- 隐藏的文件输入框，用于导入 -->
+    <input type="file" id="importFile" style="display: none" accept=".json" onchange="handleFileSelect(this)">
 
     <!-- 卡片容器，JS 会把新卡片加到这里 -->
     <div id="board"></div>
@@ -338,6 +471,10 @@
                 }
 
                 updateCanvas();
+
+                // 优化：不要在滚动时频繁保存，可以使用防抖
+                clearTimeout(window.saveTimer);
+                window.saveTimer = setTimeout(saveToStorage, 500);
             }, { passive: false });
 
             // 监听键盘按键：Ctrl + 0 重置
@@ -401,6 +538,7 @@
                     card.classList.remove('dragging');
                     document.removeEventListener('mousemove', onMouseMove);
                     document.removeEventListener('mouseup', onMouseUp);
+                    saveToStorage(); // 拖拽结束后保存
                 }
 
                 document.addEventListener('mousemove', onMouseMove);
@@ -427,9 +565,10 @@
                  }
  
                  function onMouseUp() {
-                     document.removeEventListener('mousemove', onMouseMove);
-                     document.removeEventListener('mouseup', onMouseUp);
-                 }
+                    document.removeEventListener('mousemove', onMouseMove);
+                    document.removeEventListener('mouseup', onMouseUp);
+                    saveToStorage(); // 缩放结束后保存
+                }
  
                  document.addEventListener('mousemove', onMouseMove);
                  document.addEventListener('mouseup', onMouseUp);
@@ -444,7 +583,216 @@
 
         // 启动！
         initCanvasDrag();
-        addCard();
+        
+        // 从本地存储加载数据
+        loadFromStorage();
+
+        // 自动保存机制：每当有操作时调用 saveToStorage
+        function saveToStorage() {
+            const cards = [];
+            document.querySelectorAll('.card').forEach(card => {
+                const textarea = card.querySelector('textarea');
+                const header = card.querySelector('.card-header');
+                
+                cards.push({
+                    left: card.style.left,
+                    top: card.style.top,
+                    width: card.style.width,
+                    height: card.style.height,
+                    zIndex: card.style.zIndex,
+                    content: textarea.value,
+                    color: header.style.backgroundColor
+                });
+            });
+
+            // 同时保存画布状态
+            const canvasState = { panX, panY, scale };
+            
+            localStorage.setItem('sticky_notes_data', JSON.stringify(cards));
+            localStorage.setItem('sticky_canvas_state', JSON.stringify(canvasState));
+        }
+
+        function loadFromStorage() {
+            // 恢复画布状态
+            const savedCanvas = localStorage.getItem('sticky_canvas_state');
+            if (savedCanvas) {
+                const state = JSON.parse(savedCanvas);
+                panX = state.panX || 0;
+                panY = state.panY || 0;
+                scale = state.scale || 1;
+                updateCanvas(); // 应用状态
+            }
+
+            // 恢复卡片
+            const savedCards = localStorage.getItem('sticky_notes_data');
+            if (savedCards) {
+                const cardsData = JSON.parse(savedCards);
+                if (cardsData.length > 0) {
+                    cardsData.forEach(data => createCardFromData(data));
+                    
+                    // 恢复最大的 zIndex，防止新卡片被旧卡片遮挡
+                    const maxZ = Math.max(...cardsData.map(c => parseInt(c.zIndex) || 1));
+                    zIndexCounter = maxZ + 1;
+                    return;
+                }
+            }
+            
+            // 如果没有存档，才创建一个默认的新卡片
+            addCard();
+        }
+
+        // 拆分原来的 addCard 函数，提取核心创建逻辑
+        function createCardFromData(data = null) {
+            const board = document.getElementById('board');
+            const card = document.createElement('div');
+            card.className = 'card';
+            
+            if (data) {
+                // 恢复旧卡片
+                card.style.left = data.left;
+                card.style.top = data.top;
+                card.style.width = data.width || '200px';
+                card.style.height = data.height || '150px';
+                card.style.zIndex = data.zIndex;
+            } else {
+                // 创建新卡片 (默认逻辑)
+                const centerX = (window.innerWidth / 2 - 100) / scale - panX; 
+                const centerY = (window.innerHeight / 2 - 75) / scale - panY;
+                const randomOffset = (Math.random() - 0.5) * 60; 
+                
+                card.style.left = (centerX + randomOffset) + 'px';
+                card.style.top = (centerY + randomOffset) + 'px';
+                card.style.zIndex = zIndexCounter++;
+            }
+
+            // 颜色
+            let headerColor;
+            if (data && data.color) {
+                headerColor = data.color;
+            } else {
+                const colors = ['#fee2e2', '#fef3c7', '#dcfce7', '#dbeafe', '#f3e8ff'];
+                headerColor = colors[Math.floor(Math.random() * colors.length)];
+            }
+            
+            card.innerHTML = `
+                <div class="card-header" style="background-color: ${headerColor}">
+                    <div class="close-btn" title="删除"></div>
+                </div>
+                <div class="card-body">
+                    <textarea placeholder="输入内容...">${data ? data.content : ''}</textarea>
+                </div>
+                <div class="resize-handle"></div>
+            `;
+
+            // 绑定事件 (添加 saveToStorage 调用)
+            card.querySelector('.close-btn').onclick = function() { 
+                card.remove(); 
+                saveToStorage(); // 删除后保存
+            };
+            
+            card.onmousedown = function() { 
+                card.style.zIndex = zIndexCounter++; 
+                saveToStorage(); // 层级变化保存
+            };
+            
+            const textarea = card.querySelector('textarea');
+            textarea.oninput = saveToStorage; // 输入内容时保存
+
+            const header = card.querySelector('.card-header');
+            setupDrag(card, header);
+
+            const resizer = card.querySelector('.resize-handle');
+            setupResize(card, resizer);
+
+            board.appendChild(card);
+            
+            if (!data) saveToStorage(); // 新建后保存
+        }
+
+        // 导出数据
+        function exportData() {
+            // 1. 获取所有数据
+            const cards = localStorage.getItem('sticky_notes_data');
+            const canvas = localStorage.getItem('sticky_canvas_state');
+            
+            if (!cards && !canvas) {
+                alert('没有什么可导出的！');
+                return;
+            }
+
+            const exportObj = {
+                version: 1,
+                timestamp: new Date().toISOString(),
+                cards: JSON.parse(cards || '[]'),
+                canvas: JSON.parse(canvas || '{}')
+            };
+
+            // 2. 创建 Blob 对象
+            const dataStr = JSON.stringify(exportObj, null, 2);
+            const blob = new Blob([dataStr], { type: 'application/json' });
+            
+            // 3. 触发下载
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `sticky-notes-backup-${new Date().toISOString().slice(0,10)}.json`;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+        }
+
+        // 导入数据 (触发文件选择)
+        function importData() {
+            document.getElementById('importFile').click();
+        }
+
+        // 处理文件选择
+        function handleFileSelect(input) {
+            const file = input.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                try {
+                    const data = JSON.parse(e.target.result);
+                    
+                    // 简单的格式校验
+                    if (!data.cards) {
+                        throw new Error('无效的备份文件：找不到卡片数据');
+                    }
+
+                    const count = data.cards.length || 0;
+                    if (confirm(`即将导入备份（包含 ${count} 张卡片），这将覆盖当前内容，确定吗？`)) {
+                        // 写入 LocalStorage
+                        localStorage.setItem('sticky_notes_data', JSON.stringify(data.cards));
+                        localStorage.setItem('sticky_canvas_state', JSON.stringify(data.canvas || {}));
+                        
+                        // 刷新页面以加载新数据
+                        location.reload();
+                    }
+                } catch (err) {
+                    alert('导入失败：文件格式错误或已损坏\n' + err.message);
+                }
+            };
+            reader.readAsText(file);
+            
+            // 清空 input，允许重复选择同一个文件
+            input.value = '';
+        }
+
+        // 修改原来的 addCard 为简单调用
+        function addCard() {
+            createCardFromData(null);
+        }
+
+        // 修改 clearAll
+        function clearAll() {
+            if(confirm('确定要清空所有卡片吗？')) {
+                document.getElementById('board').innerHTML = '';
+                saveToStorage(); // 清空后保存
+            }
+        }
     </script>
 </body>
 </html>
