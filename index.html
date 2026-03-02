@@ -3,801 +3,240 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>自由卡片白板</title>
-    <style>
-        body {
-            margin: 0;
-            padding: 0;
-            background-color: #f0f2f5;
-            /* 网格背景，更有白板的感觉 */
-            background-image: radial-gradient(#cbd5e1 1px, transparent 1px);
-            background-size: 20px 20px;
-            background-attachment: fixed; 
-            font-family: sans-serif;
-            height: 100vh;
-            overflow: hidden; /* 隐藏滚动条，完全由 JS 接管视野 */
-            cursor: grab; /* 鼠标变成抓手，暗示背景可以拖动 */
-            user-select: none; /* 关键：禁止选中页面上的文字，防止拖拽时意外变蓝 */
-            -webkit-user-select: none; /* 兼容 Safari/Chrome */
-        }
-
-        /* 但是，输入框里的文字必须能选中，否则没法编辑了 */
-        textarea {
-            user-select: text;
-            -webkit-user-select: text;
-        }
-        
-        body.grabbing {
-            cursor: grabbing;
-        }
-
-        /* 顶部工具栏 - 美化版 */
-        .toolbar {
-            position: fixed;
-            top: 20px;
-            left: 50%;
-            transform: translateX(-50%);
-            z-index: 1000;
-            background: rgba(255, 255, 255, 0.9); /* 半透明背景 */
-            backdrop-filter: blur(10px); /* 毛玻璃效果 */
-            padding: 8px;
-            border-radius: 16px; /* 更圆润的边框 */
-            box-shadow: 0 4px 20px rgba(0, 0, 0, 0.08);
-            display: flex;
-            gap: 12px;
-            pointer-events: none; 
-            border: 1px solid rgba(0,0,0,0.05);
-        }
-        
-        .toolbar button {
-            pointer-events: auto;
-            padding: 10px 24px;
-            border: none;
-            border-radius: 12px;
-            cursor: pointer;
-            font-weight: 600;
-            font-size: 14px;
-            display: flex;
-            align-items: center;
-            gap: 8px;
-            transition: all 0.2s cubic-bezier(0.2, 0, 0, 1);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.05);
-        }
-
-        /* 新建按钮：渐变蓝 */
-        button.primary {
-            background: linear-gradient(135deg, #3b82f6, #2563eb);
-            color: white;
-        }
-        button.primary:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 6px 12px rgba(37, 99, 235, 0.25);
-        }
-        button.primary:active {
-            transform: translateY(0);
-        }
-
-        /* 清空按钮：极简白灰 */
-        button.secondary {
-            background: white;
-            color: #4b5563;
-            border: 1px solid #e5e7eb;
-        }
-        button.secondary:hover {
-            background: #f9fafb;
-            color: #ef4444; /* 悬停变红，示警 */
-            border-color: #fecaca;
-        }
-
-        /* 右上角抽屉菜单容器 - 改为右贴边模式 */
-        .drawer-menu {
-            position: fixed;
-            top: 20px;
-            right: 0; /* 紧贴右边 */
-            z-index: 2000;
-            display: flex;
-            align-items: flex-start; /* 顶部对齐 */
-            pointer-events: auto;
-        }
-
-        /* 主按钮（箭头标签）- 半圆贴边效果 */
-        .drawer-toggle {
-            width: 30px; /* 窄一点，更像标签 */
-            height: 50px;
-            background: white;
-            /* 左圆角，右直角 */
-            border-radius: 12px 0 0 12px; 
-            box-shadow: -4px 4px 12px rgba(0,0,0,0.1);
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 16px; /* 箭头小一点 */
-            color: #64748b;
-            cursor: pointer;
-            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-            z-index: 2002;
-            position: relative;
-            left: 0; 
-        }
-        
-        /* 抽屉内容列表 - 从右侧滑出 */
-        .drawer-content {
-            position: absolute;
-            top: 0;
-            right: 0; /* 初始状态：完全藏在屏幕右边 */
-            width: 160px; /* 固定宽度 */
-            height: auto;
-            min-height: 50px; /* 保证高度至少和按钮一样 */
-            background: white;
-            border-radius: 12px 0 0 12px; /* 左上角和左下角都圆角 */
-            box-shadow: -8px 8px 24px rgba(0,0,0,0.12);
-            padding: 12px;
-            display: flex;
-            flex-direction: column;
-            gap: 8px;
-            
-            /* 动画初始状态：完全移出屏幕 */
-            transform: translateX(100%); 
-            opacity: 1; 
-            pointer-events: auto;
-            transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
-        }
-
-        /* 悬停在整个容器上时，展开抽屉 */
-        .drawer-menu:hover .drawer-content {
-            transform: translateX(0); /* 滑入屏幕 */
-        }
-
-        /* 当抽屉展开时，按钮融合 */
-        .drawer-menu:hover .drawer-toggle {
-            transform: translateX(-160px); /* 跟随内容宽度移动 */
-            width: 0; /* 宽度变0，让它消失 */
-            padding: 0;
-            opacity: 0; /* 彻底隐形 */
-            pointer-events: none; /* 防止误触 */
-        }
-
-        /* 抽屉展开时，给内容区加个左边框装饰，看起来像是一体的 */
-        .drawer-menu:hover .drawer-content::before {
-            content: '>'; /* 变成向右箭头，提示可以收起（虽然是自动的） */
-            position: absolute;
-            left: -20px;
-            top: 15px;
-            color: #94a3b8;
-            font-weight: bold;
-            display: none; /* 暂时隐藏，简洁为主 */
-        }
-
-        /* 抽屉里的按钮样式 */
-
-        /* 抽屉里的按钮样式 */
-        .drawer-btn {
-            display: flex;
-            align-items: center;
-            gap: 10px;
-            padding: 10px 16px;
-            border: none;
-            background: transparent;
-            color: #4b5563;
-            font-size: 14px;
-            font-weight: 500;
-            cursor: pointer;
-            border-radius: 8px;
-            white-space: nowrap; /* 防止文字换行 */
-            transition: background 0.2s;
-            text-align: left;
-            width: 100%;
-        }
-
-        .drawer-btn:hover {
-            background-color: #f3f4f6;
-            color: #2563eb;
-        }
-
-        .drawer-btn span {
-            font-size: 18px;
-        }
-
-        /* 画布容器：承载所有卡片，负责整体平移 */
-        #board {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            transform-origin: 0 0;
-            /* 关键：不让 board 拦截鼠标事件，除非点到了卡片 */
-            pointer-events: none;
-        }
-
-        /* 卡片样式 */
-        .card {
-            pointer-events: auto; /* 恢复卡片交互 */
-            position: absolute; /* 绝对定位，实现自由拖拽 */
-            width: 200px;
-            min-height: 150px;
-            background-color: #fff;
-            border-radius: 8px;
-            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
-            display: flex;
-            flex-direction: column;
-            overflow: hidden;
-            transition: box-shadow 0.2s;
-            /* 默认出现在屏幕中间附近 */
-            top: 100px;
-            left: 100px;
-        }
-
-        /* 选中/拖拽时的卡片效果 */
-        .card.dragging {
-            box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.2);
-            opacity: 0.9;
-            cursor: grabbing;
-        }
-
-        /* 卡片头部 - 拖拽把手 */
-        .card-header {
-            height: 30px;
-            background-color: #fef3c7; /* 淡黄色头部 */
-            cursor: grab; /* 抓手光标 */
-            display: flex;
-            justify-content: flex-end;
-            align-items: center;
-            padding: 0 8px;
-            border-bottom: 1px solid #f3f4f6;
-        }
-
-        .card-header:active {
-            cursor: grabbing;
-        }
-
-        /* 关闭按钮 */
-        .close-btn {
-            width: 16px;
-            height: 16px;
-            background-color: #ff8787;
-            border-radius: 50%;
-            cursor: pointer;
-            opacity: 0.6;
-        }
-        .close-btn:hover {
-            opacity: 1;
-        }
-
-        /* 内容编辑区 */
-        .card-body {
-            flex: 1;
-            padding: 10px;
-        }
-
-        textarea {
-            width: 100%;
-            height: 100%;
-            border: none;
-            outline: none;
-            resize: none; /* 禁止手动拉伸，由卡片大小决定 */
-            font-family: inherit;
-            background: transparent;
-            font-size: 14px;
-            line-height: 1.5;
-        }
-
-        /* 调整大小的手柄 (右下角的小三角) */
-        .resize-handle {
-            position: absolute;
-            bottom: 2px;
-            right: 2px;
-            width: 15px;
-            height: 15px;
-            background: linear-gradient(135deg, transparent 50%, #94a3b8 50%);
-            cursor: nwse-resize; /* 鼠标变成双向箭头 */
-            opacity: 0.5;
-            z-index: 10;
-        }
-        .resize-handle:hover {
-            opacity: 1;
-        }
-    </style>
+    <title>自由卡片白板 (组件化版)</title>
+    <!-- 引入全局样式 -->
+    <link rel="stylesheet" href="styles/global.css">
+    <!-- 引入组件样式 -->
+    <link rel="stylesheet" href="components/Card/card.css">
+    <link rel="stylesheet" href="components/Toolbar/toolbar.css">
+    <link rel="stylesheet" href="components/Drawer/drawer.css">
 </head>
 <body>
 
     <div class="toolbar">
-        <button class="primary" onclick="addCard()">
+        <button class="primary" id="btn-add">
             <span>✨</span> 新建便利贴
         </button>
-        <button class="secondary" onclick="clearAll()">
+        <button class="secondary" id="btn-clear">
             <span>🗑️</span> 清空
         </button>
     </div>
 
     <!-- 右上角悬浮抽屉菜单 -->
     <div class="drawer-menu">
-        <!-- 悬浮标签 (箭头) -->
-        <div class="drawer-toggle">
-            ◀
-        </div>
-        <!-- 抽屉内容 -->
+        <div class="drawer-toggle">◀</div>
         <div class="drawer-content">
-            <button class="drawer-btn" onclick="exportData()">
+            <button class="drawer-btn" id="btn-export">
                 <span>💾</span> 导出备份
             </button>
-            <button class="drawer-btn" onclick="importData()">
+            <button class="drawer-btn" id="btn-import">
                 <span>📂</span> 导入备份
             </button>
         </div>
     </div>
 
-    <!-- 隐藏的文件输入框，用于导入 -->
-    <input type="file" id="importFile" style="display: none" accept=".json" onchange="handleFileSelect(this)">
+    <input type="file" id="importFile" style="display: none" accept=".json">
 
-    <!-- 卡片容器，JS 会把新卡片加到这里 -->
     <div id="board"></div>
 
-    <script>
-        let zIndexCounter = 1; 
-        // 画布平移量 (Canvas Panning)
+    <!-- 使用 type="module" 启用 ES6 模块支持 -->
+    <script type="module">
+        import { Card } from './components/Card/card.js';
+
+        // --- 全局状态 ---
+        let zIndexCounter = 1;
         let panX = 0;
         let panY = 0;
-        // 画布缩放比例 (Canvas Zoom)
         let scale = 1;
+        window.currentScale = scale; // 暴露给 Card 组件使用
 
-        // 全局定义 updateCanvas，确保任何地方都能调用
+        // --- 核心功能：画布操作 ---
         function updateCanvas() {
             const board = document.getElementById('board');
             const body = document.body;
             board.style.transform = `scale(${scale}) translate(${panX}px, ${panY}px)`;
             body.style.backgroundSize = `${20 * scale}px ${20 * scale}px`;
             body.style.backgroundPosition = `${panX * scale}px ${panY * scale}px`;
+            window.currentScale = scale;
         }
 
-        function addCard() {
-            const board = document.getElementById('board');
-            const card = document.createElement('div');
-            card.className = 'card';
-            
-            // 计算新位置：屏幕中心 - 当前画布偏移量
-            // 考虑缩放因素：偏移量需要除以缩放比例，以匹配当前的视图坐标系
-            const centerX = (window.innerWidth / 2 - 100) / scale - panX; 
-            const centerY = (window.innerHeight / 2 - 75) / scale - panY;
-            
-            const randomOffset = (Math.random() - 0.5) * 60; 
-            
-            // 注意：这里我们不需要再乘 scale，因为新卡片是加到 board 里的
-            // board 已经被缩放了，卡片作为子元素会自动继承缩放
-            card.style.left = (centerX + randomOffset) + 'px';
-            card.style.top = (centerY + randomOffset) + 'px';
-            card.style.zIndex = zIndexCounter++;
-
-            // ... (其余部分保持不变)
-            const colors = ['#fee2e2', '#fef3c7', '#dcfce7', '#dbeafe', '#f3e8ff'];
-            const headerColor = colors[Math.floor(Math.random() * colors.length)];
-            
-            card.innerHTML = `
-                <div class="card-header" style="background-color: ${headerColor}">
-                    <div class="close-btn" title="删除"></div>
-                </div>
-                <div class="card-body">
-                    <textarea placeholder="输入内容..."></textarea>
-                </div>
-                <div class="resize-handle"></div>
-            `;
-
-            // 绑定事件
-            card.querySelector('.close-btn').onclick = function() { card.remove(); };
-            card.onmousedown = function() { card.style.zIndex = zIndexCounter++; };
-
-            const header = card.querySelector('.card-header');
-            setupDrag(card, header);
-
-            const resizer = card.querySelector('.resize-handle');
-            setupResize(card, resizer);
-
-            board.appendChild(card);
-        }
-
-        // 初始化无限画布拖拽逻辑
         function initCanvasDrag() {
             const body = document.body;
-            const board = document.getElementById('board');
-            
             let isPanning = false;
-            let startX, startY;
-            let startPanX, startPanY;
+            let startX, startY, startPanX, startPanY;
 
-            // 监听整个页面的鼠标按下
-            document.addEventListener('mousedown', function(e) {
-                // 如果点到了卡片、按钮或滚动条，就不触发画布拖拽
-                if (e.target.closest('.card') || e.target.closest('button')) return;
-
-                // 如果按住了 Ctrl 键，也不触发拖拽 (交给下面的 wheel 处理)
+            document.addEventListener('mousedown', (e) => {
+                if (e.target.closest('.card') || e.target.closest('button') || e.target.closest('.drawer-menu')) return;
                 if (e.ctrlKey) return;
 
                 isPanning = true;
                 body.classList.add('grabbing');
-                
                 startX = e.clientX;
                 startY = e.clientY;
-                // 关键修正：记录按下时的平移量，不需要考虑 scale，因为 panX 是逻辑坐标
                 startPanX = panX;
                 startPanY = panY;
             });
 
-            document.addEventListener('mousemove', function(e) {
+            document.addEventListener('mousemove', (e) => {
                 if (!isPanning) return;
-                
-                // 计算拖拽距离 (也要考虑缩放比例，否则缩小时拖拽会变得飞快)
+                // 拖拽画布本身不需要除以 scale，因为我们是在移动视口
+                // 等等，之前的逻辑里，panX 是平移量，translate 在 scale 之后应用？
+                // 在 CSS: scale() translate()
+                // 如果 panX 是逻辑坐标，那么视觉位移 = panX * scale
+                // 我们希望视觉位移 = 鼠标位移
+                // 所以 panX * scale = mouseDelta -> panX = mouseDelta / scale
                 const dx = (e.clientX - startX) / scale;
                 const dy = (e.clientY - startY) / scale;
-                
-                // 更新全局偏移量
                 panX = startPanX + dx;
                 panY = startPanY + dy;
-                
                 updateCanvas();
             });
 
-            document.addEventListener('mouseup', function() {
+            document.addEventListener('mouseup', () => {
                 isPanning = false;
                 body.classList.remove('grabbing');
+                saveToStorage();
             });
 
-            // 新增：鼠标滚轮缩放与平移
-            document.addEventListener('wheel', function(e) {
-                // 如果鼠标在 textarea (输入框) 上，且没有按住 Ctrl (缩放)，
-                // 我们就不拦截，让浏览器处理默认的文字滚动
-                if (e.target.tagName.toLowerCase() === 'textarea' && !e.ctrlKey) {
-                    return; 
-                }
-
-                // 阻止浏览器默认行为
+            document.addEventListener('wheel', (e) => {
+                if (e.target.tagName.toLowerCase() === 'textarea' && !e.ctrlKey) return;
                 e.preventDefault();
 
                 if (e.ctrlKey) {
-                    // 缩放模式
-                    const zoomSensitivity = 0.001;
-                    const delta = -e.deltaY * zoomSensitivity;
-                    
-                    // 限制缩放范围 (0.1倍 到 5倍)
-                    const newScale = Math.min(Math.max(scale + delta, 0.1), 5);
-                    
-                    // 以鼠标为中心进行缩放 (高级算法)
-                    // 1. 计算鼠标当前在画布上的逻辑坐标
-                    const mouseX = (e.clientX - window.innerWidth/2) / scale - panX;
-                    const mouseY = (e.clientY - window.innerHeight/2) / scale - panY;
-                    
-                    // 2. 更新缩放
-                    scale = newScale;
-                    
-                    // 3. 调整 panX/Y 以保持鼠标位置不变 (反向补偿)
-                    // 这一步有点烧脑，原理是：新偏移 = (屏幕中心 - 鼠标屏幕坐标)/新缩放 - 鼠标逻辑坐标
-                    // 但简单来说，我们暂时只做中心缩放，体验也足够好
-                    // 若要精确鼠标中心缩放，需要重新计算 panX
-                    
+                    const delta = -e.deltaY * 0.001;
+                    scale = Math.min(Math.max(scale + delta, 0.1), 5);
                 } else {
-                    // 平移模式 (考虑缩放比例，让移动速度保持跟手)
                     panY -= e.deltaY / scale;
                     panX -= e.deltaX / scale;
                 }
-
                 updateCanvas();
-
-                // 优化：不要在滚动时频繁保存，可以使用防抖
                 clearTimeout(window.saveTimer);
                 window.saveTimer = setTimeout(saveToStorage, 500);
             }, { passive: false });
+        }
 
-            // 监听键盘按键：Ctrl + 0 重置
-            document.addEventListener('keydown', function(e) {
-                // Ctrl + ` (也就是波浪号那个键)
-                if (e.ctrlKey && e.key === '`') {
-                    e.preventDefault();
-                    resetView();
-                }
-            });
+        // --- 核心功能：卡片管理 ---
+        function addCard(data = null) {
+            const board = document.getElementById('board');
+            let x, y, content, color, zIndex;
 
-            function resetView() {
-                scale = 1;
-                panX = 0;
-                panY = 0;
-                updateCanvas();
+            if (data) {
+                x = parseFloat(data.left); // 去掉 px
+                y = parseFloat(data.top);
+                zIndex = data.zIndex;
+                content = data.content;
+                color = data.color;
+            } else {
+                // 新建
+                x = (window.innerWidth / 2 - 100) / scale - panX;
+                y = (window.innerHeight / 2 - 75) / scale - panY;
+                x += (Math.random() - 0.5) * 60;
+                zIndex = zIndexCounter++;
             }
 
-            // (已移除内部的 updateCanvas 定义，改为使用全局的)
-        }
-
-        // 核心逻辑1：移动卡片 (无需修改，绝对定位天然支持)
-        function setupDrag(card, handle) {
-            handle.onmousedown = function(e) {
-                const startX = e.clientX;
-                const startY = e.clientY;
-                const initialLeft = card.offsetLeft;
-                const initialTop = card.offsetTop;
-                
-                card.classList.add('dragging');
-                e.preventDefault();
-
-                function onMouseMove(moveEvent) {
-                    // 注意：这里的 dx 是屏幕像素差，直接加到 left 上是正确的
-                    // 因为 transform 只是移动了坐标系原点，单位长度没变
-                    // 修正：实际上 scale 后，坐标系的单位长度变了！
-                    // 如果 scale=2 (放大2倍)，鼠标移动 100px，在画布坐标系里其实只移动了 50px
-                    // 所以必须除以 scale
-                    const dx = (moveEvent.clientX - startX) / scale;
-                    const dy = (moveEvent.clientY - startY) / scale;
-                    card.style.left = (initialLeft + dx) + 'px';
-                    card.style.top = (initialTop + dy) + 'px';
-                }
-
-                function onMouseUp() {
-                    card.classList.remove('dragging');
-                    document.removeEventListener('mousemove', onMouseMove);
-                    document.removeEventListener('mouseup', onMouseUp);
-                    saveToStorage(); // 拖拽结束后保存
-                }
-
-                document.addEventListener('mousemove', onMouseMove);
-                document.addEventListener('mouseup', onMouseUp);
-            };
-        }
-
-        // 核心逻辑2：调整大小 (无需修改)
-        function setupResize(card, handle) {
-             handle.onmousedown = function(e) {
-                 e.stopPropagation(); 
-                 const startX = e.clientX;
-                 const startY = e.clientY;
-                 const startWidth = parseInt(document.defaultView.getComputedStyle(card).width);
-                 const startHeight = parseInt(document.defaultView.getComputedStyle(card).height);
- 
-                 function onMouseMove(moveEvent) {
-                     const dx = (moveEvent.clientX - startX) / scale;
-                     const dy = (moveEvent.clientY - startY) / scale;
-                     const newWidth = startWidth + dx;
-                     const newHeight = startHeight + dy;
-                     if (newWidth > 150) card.style.width = newWidth + 'px';
-                     if (newHeight > 100) card.style.height = newHeight + 'px';
-                 }
- 
-                 function onMouseUp() {
-                    document.removeEventListener('mousemove', onMouseMove);
-                    document.removeEventListener('mouseup', onMouseUp);
-                    saveToStorage(); // 缩放结束后保存
-                }
- 
-                 document.addEventListener('mousemove', onMouseMove);
-                 document.addEventListener('mouseup', onMouseUp);
-             };
+            const card = new Card(x, y, zIndex, content, color);
+            board.appendChild(card.element);
+            
+            if (!data) saveToStorage();
         }
 
         function clearAll() {
             if(confirm('确定要清空所有卡片吗？')) {
                 document.getElementById('board').innerHTML = '';
+                saveToStorage();
             }
         }
 
-        // 启动！
-        initCanvasDrag();
-        
-        // 从本地存储加载数据
-        loadFromStorage();
-
-        // 自动保存机制：每当有操作时调用 saveToStorage
+        // --- 数据持久化 ---
         function saveToStorage() {
             const cards = [];
-            document.querySelectorAll('.card').forEach(card => {
-                const textarea = card.querySelector('textarea');
-                const header = card.querySelector('.card-header');
-                
+            document.querySelectorAll('.card').forEach(el => {
+                const textarea = el.querySelector('textarea');
+                const header = el.querySelector('.card-header');
                 cards.push({
-                    left: card.style.left,
-                    top: card.style.top,
-                    width: card.style.width,
-                    height: card.style.height,
-                    zIndex: card.style.zIndex,
+                    left: el.style.left,
+                    top: el.style.top,
+                    width: el.style.width,
+                    height: el.style.height,
+                    zIndex: el.style.zIndex,
                     content: textarea.value,
                     color: header.style.backgroundColor
                 });
             });
-
-            // 同时保存画布状态
             const canvasState = { panX, panY, scale };
-            
-            localStorage.setItem('sticky_notes_data', JSON.stringify(cards));
-            localStorage.setItem('sticky_canvas_state', JSON.stringify(canvasState));
+            localStorage.setItem('sticky_notes_data_v2', JSON.stringify(cards)); // 用个新key避免冲突
+            localStorage.setItem('sticky_canvas_state_v2', JSON.stringify(canvasState));
         }
 
         function loadFromStorage() {
-            // 恢复画布状态
-            const savedCanvas = localStorage.getItem('sticky_canvas_state');
+            const savedCanvas = localStorage.getItem('sticky_canvas_state_v2');
             if (savedCanvas) {
                 const state = JSON.parse(savedCanvas);
                 panX = state.panX || 0;
                 panY = state.panY || 0;
                 scale = state.scale || 1;
-                updateCanvas(); // 应用状态
+                updateCanvas();
             }
 
-            // 恢复卡片
-            const savedCards = localStorage.getItem('sticky_notes_data');
+            const savedCards = localStorage.getItem('sticky_notes_data_v2');
             if (savedCards) {
                 const cardsData = JSON.parse(savedCards);
                 if (cardsData.length > 0) {
-                    cardsData.forEach(data => createCardFromData(data));
-                    
-                    // 恢复最大的 zIndex，防止新卡片被旧卡片遮挡
+                    cardsData.forEach(data => addCard(data));
                     const maxZ = Math.max(...cardsData.map(c => parseInt(c.zIndex) || 1));
                     zIndexCounter = maxZ + 1;
-                    return;
                 }
             }
-            
-            // 如果没有存档，才创建一个默认的新卡片
-            // 修正：现在我们希望初始状态是完全空白的，不自动创建
-            // 除非用户自己点击“新建”
-            // addCard();
         }
 
-        // 拆分原来的 addCard 函数，提取核心创建逻辑
-        function createCardFromData(data = null) {
-            const board = document.getElementById('board');
-            const card = document.createElement('div');
-            card.className = 'card';
-            
-            if (data) {
-                // 恢复旧卡片
-                card.style.left = data.left;
-                card.style.top = data.top;
-                card.style.width = data.width || '200px';
-                card.style.height = data.height || '150px';
-                card.style.zIndex = data.zIndex;
-            } else {
-                // 创建新卡片 (默认逻辑)
-                const centerX = (window.innerWidth / 2 - 100) / scale - panX; 
-                const centerY = (window.innerHeight / 2 - 75) / scale - panY;
-                const randomOffset = (Math.random() - 0.5) * 60; 
-                
-                card.style.left = (centerX + randomOffset) + 'px';
-                card.style.top = (centerY + randomOffset) + 'px';
-                card.style.zIndex = zIndexCounter++;
-            }
-
-            // 颜色
-            let headerColor;
-            if (data && data.color) {
-                headerColor = data.color;
-            } else {
-                const colors = ['#fee2e2', '#fef3c7', '#dcfce7', '#dbeafe', '#f3e8ff'];
-                headerColor = colors[Math.floor(Math.random() * colors.length)];
-            }
-            
-            card.innerHTML = `
-                <div class="card-header" style="background-color: ${headerColor}">
-                    <div class="close-btn" title="删除"></div>
-                </div>
-                <div class="card-body">
-                    <textarea placeholder="输入内容...">${data ? data.content : ''}</textarea>
-                </div>
-                <div class="resize-handle"></div>
-            `;
-
-            // 绑定事件 (添加 saveToStorage 调用)
-            card.querySelector('.close-btn').onclick = function() { 
-                card.remove(); 
-                saveToStorage(); // 删除后保存
-            };
-            
-            card.onmousedown = function() { 
-                card.style.zIndex = zIndexCounter++; 
-                saveToStorage(); // 层级变化保存
-            };
-            
-            const textarea = card.querySelector('textarea');
-            textarea.oninput = saveToStorage; // 输入内容时保存
-
-            const header = card.querySelector('.card-header');
-            setupDrag(card, header);
-
-            const resizer = card.querySelector('.resize-handle');
-            setupResize(card, resizer);
-
-            board.appendChild(card);
-            
-            if (!data) saveToStorage(); // 新建后保存
-        }
-
-        // 导出数据
+        // --- 导入导出 ---
         function exportData() {
-            // 1. 获取所有数据
-            const cards = localStorage.getItem('sticky_notes_data');
-            const canvas = localStorage.getItem('sticky_canvas_state');
+            const cards = localStorage.getItem('sticky_notes_data_v2');
+            const canvas = localStorage.getItem('sticky_canvas_state_v2');
+            if (!cards && !canvas) return alert('没有数据');
             
-            if (!cards && !canvas) {
-                alert('没有什么可导出的！');
-                return;
-            }
-
-            const exportObj = {
-                version: 1,
-                timestamp: new Date().toISOString(),
+            const blob = new Blob([JSON.stringify({
                 cards: JSON.parse(cards || '[]'),
                 canvas: JSON.parse(canvas || '{}')
-            };
-
-            // 2. 创建 Blob 对象
-            const dataStr = JSON.stringify(exportObj, null, 2);
-            const blob = new Blob([dataStr], { type: 'application/json' });
+            }, null, 2)], { type: 'application/json' });
             
-            // 3. 触发下载
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `sticky-notes-backup-${new Date().toISOString().slice(0,10)}.json`;
-            document.body.appendChild(a);
+            a.download = `backup-${new Date().toISOString().slice(0,10)}.json`;
             a.click();
-            document.body.removeChild(a);
-            URL.revokeObjectURL(url);
         }
 
-        // 导入数据 (触发文件选择)
-        function importData() {
-            document.getElementById('importFile').click();
-        }
-
-        // 处理文件选择
-        function handleFileSelect(input) {
-            const file = input.files[0];
-            if (!file) return;
-
+        function importData(file) {
             const reader = new FileReader();
-            reader.onload = function(e) {
+            reader.onload = (e) => {
                 try {
                     const data = JSON.parse(e.target.result);
-                    
-                    // 简单的格式校验
-                    if (!data.cards) {
-                        throw new Error('无效的备份文件：找不到卡片数据');
-                    }
-
-                    const count = data.cards.length || 0;
-                    if (confirm(`即将导入备份（包含 ${count} 张卡片），这将覆盖当前内容，确定吗？`)) {
-                        // 写入 LocalStorage
-                        localStorage.setItem('sticky_notes_data', JSON.stringify(data.cards));
-                        localStorage.setItem('sticky_canvas_state', JSON.stringify(data.canvas || {}));
-                        
-                        // 关键修复：写入后立刻手动调用 loadFromStorage 重新渲染，而不是依赖 reload
-                        // 因为某些浏览器/环境下 reload 可能会导致 LocalStorage 写入尚未完成就被打断
-                        // 或者 reload 后数据虽然有了，但可能被某些初始化逻辑覆盖
-                        
-                        // 1. 清空当前视图
+                    if (confirm(`导入 ${data.cards.length} 张卡片？`)) {
+                        localStorage.setItem('sticky_notes_data_v2', JSON.stringify(data.cards));
+                        localStorage.setItem('sticky_canvas_state_v2', JSON.stringify(data.canvas));
                         document.getElementById('board').innerHTML = '';
-                        
-                        // 2. 重新加载数据
                         loadFromStorage();
-                        
-                        alert('导入成功！');
                     }
-                } catch (err) {
-                    alert('导入失败：文件格式错误或已损坏\n' + err.message);
-                }
+                } catch(err) { alert('导入失败'); }
             };
             reader.readAsText(file);
-            
-            // 清空 input，允许重复选择同一个文件
-            input.value = '';
         }
 
-        // 修改原来的 addCard 为简单调用
-        function addCard() {
-            createCardFromData(null);
-        }
+        // --- 初始化绑定 ---
+        document.getElementById('btn-add').onclick = () => addCard();
+        document.getElementById('btn-clear').onclick = clearAll;
+        document.getElementById('btn-export').onclick = exportData;
+        document.getElementById('btn-import').onclick = () => document.getElementById('importFile').click();
+        document.getElementById('importFile').onchange = (e) => importData(e.target.files[0]);
 
-        // 修改 clearAll
-        function clearAll() {
-            if(confirm('确定要清空所有卡片吗？')) {
-                document.getElementById('board').innerHTML = '';
-                saveToStorage(); // 清空后保存
-            }
-        }
+        // 监听来自 Card 组件的保存请求
+        window.addEventListener('save-data', saveToStorage);
+        
+        // 启动
+        initCanvasDrag();
+        loadFromStorage();
+
     </script>
 </body>
 </html>

@@ -1,0 +1,106 @@
+/* 右上角抽屉菜单容器 - 改为右贴边模式 */
+.drawer-menu {
+    position: fixed;
+    top: 20px;
+    right: 0; /* 紧贴右边 */
+    z-index: 2000;
+    display: flex;
+    align-items: flex-start; /* 顶部对齐 */
+    pointer-events: auto;
+}
+
+/* 主按钮（箭头标签）- 半圆贴边效果 */
+.drawer-toggle {
+    width: 30px; /* 窄一点，更像标签 */
+    height: 50px;
+    background: white;
+    /* 左圆角，右直角 */
+    border-radius: 12px 0 0 12px; 
+    box-shadow: -4px 4px 12px rgba(0,0,0,0.1);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 16px; /* 箭头小一点 */
+    color: #64748b;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    z-index: 2002;
+    position: relative;
+    left: 0; 
+}
+
+/* 抽屉内容列表 - 从右侧滑出 */
+.drawer-content {
+    position: absolute;
+    top: 0;
+    right: 0; /* 初始状态：完全藏在屏幕右边 */
+    width: 160px; /* 固定宽度 */
+    height: auto;
+    min-height: 50px; /* 保证高度至少和按钮一样 */
+    background: white;
+    border-radius: 12px 0 0 12px; /* 左上角和左下角都圆角 */
+    box-shadow: -8px 8px 24px rgba(0,0,0,0.12);
+    padding: 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    
+    /* 动画初始状态：完全移出屏幕 */
+    transform: translateX(100%); 
+    opacity: 1; 
+    pointer-events: auto;
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* 悬停在整个容器上时，展开抽屉 */
+.drawer-menu:hover .drawer-content {
+    transform: translateX(0); /* 滑入屏幕 */
+}
+
+/* 当抽屉展开时，按钮融合 */
+.drawer-menu:hover .drawer-toggle {
+    transform: translateX(-160px); /* 跟随内容宽度移动 */
+    width: 0; /* 宽度变0，让它消失 */
+    padding: 0;
+    opacity: 0; /* 彻底隐形 */
+    pointer-events: none; /* 防止误触 */
+}
+
+/* 抽屉展开时，给内容区加个左边框装饰，看起来像是一体的 */
+.drawer-menu:hover .drawer-content::before {
+    content: '>'; /* 变成向右箭头，提示可以收起（虽然是自动的） */
+    position: absolute;
+    left: -20px;
+    top: 15px;
+    color: #94a3b8;
+    font-weight: bold;
+    display: none; /* 暂时隐藏，简洁为主 */
+}
+
+/* 抽屉里的按钮样式 */
+.drawer-btn {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 16px;
+    border: none;
+    background: transparent;
+    color: #4b5563;
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+    border-radius: 8px;
+    white-space: nowrap; /* 防止文字换行 */
+    transition: background 0.2s;
+    text-align: left;
+    width: 100%;
+}
+
+.drawer-btn:hover {
+    background-color: #f3f4f6;
+    color: #2563eb;
+}
+
+.drawer-btn span {
+    font-size: 18px;
+}
