@@ -44,6 +44,9 @@
             <button class="drawer-btn" id="btn-new-ws">
                 <span>➕</span> 新建工作区
             </button>
+            <button class="drawer-btn" id="btn-rename-ws">
+                <span>✏️</span> 重命名当前页
+            </button>
             <button class="drawer-btn danger" id="btn-del-ws">
                 <span>❌</span> 删除当前页
             </button>
@@ -121,7 +124,11 @@
             });
 
             document.addEventListener('wheel', (e) => {
-                if (e.target.tagName.toLowerCase() === 'textarea' && !e.ctrlKey) return;
+                // 如果鼠标在抽屉里，或者在文本框里，允许原生滚动，不拦截
+                if (e.target.closest('.drawer-content') || (e.target.tagName.toLowerCase() === 'textarea' && !e.ctrlKey)) {
+                    return;
+                }
+                
                 e.preventDefault();
 
                 if (e.ctrlKey) {
@@ -226,6 +233,16 @@
             };
             
             switchWorkspace(id);
+        }
+
+        function renameWorkspace() {
+            const currentName = workspaces[currentWorkspaceId].name;
+            const newName = prompt("请输入新的工作区名称：", currentName);
+            if (newName && newName.trim() !== "") {
+                workspaces[currentWorkspaceId].name = newName.trim();
+                saveToStorage();
+                renderWorkspaceList();
+            }
         }
 
         function deleteWorkspace() {
@@ -419,6 +436,7 @@
         
         // 新按钮绑定
         document.getElementById('btn-new-ws').onclick = createWorkspace;
+        document.getElementById('btn-rename-ws').onclick = renameWorkspace;
         document.getElementById('btn-del-ws').onclick = deleteWorkspace;
 
         window.addEventListener('save-data', saveToStorage);
