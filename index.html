@@ -126,7 +126,18 @@
 
                 if (e.ctrlKey) {
                     const delta = -e.deltaY * 0.001;
+                    const oldScale = scale;
                     scale = Math.min(Math.max(scale + delta, 0.1), 5);
+                    
+                    // 计算鼠标相对于视口的坐标
+                    const mouseX = e.clientX;
+                    const mouseY = e.clientY;
+
+                    // 保持鼠标下的点在缩放前后位置不变
+                    // 公式推导: newPan = oldPan - mouse * (1/oldScale - 1/newScale)
+                    const scaleRatio = 1 / oldScale - 1 / scale;
+                    panX -= mouseX * scaleRatio;
+                    panY -= mouseY * scaleRatio;
                 } else {
                     panY -= e.deltaY / scale;
                     panX -= e.deltaX / scale;
