@@ -18,20 +18,42 @@
             <span>✨</span> 新建便利贴
         </button>
         <button class="secondary" id="btn-clear">
-            <span>🗑️</span> 清空
+            <span>🗑️</span> 清空当前页
         </button>
     </div>
 
-    <!-- 右上角悬浮抽屉菜单 -->
-    <div class="drawer-menu">
-        <div class="drawer-toggle">◀</div>
+    <!-- 1. 备份抽屉 (上方) -->
+    <div class="drawer-menu backup-drawer">
+        <div class="drawer-toggle">💾</div>
         <div class="drawer-content">
+            <div class="drawer-title">数据备份</div>
             <button class="drawer-btn" id="btn-export">
-                <span>💾</span> 导出备份
+                <span>📤</span> 导出备份
             </button>
             <button class="drawer-btn" id="btn-import">
-                <span>📂</span> 导入备份
+                <span>📥</span> 导入备份
             </button>
+        </div>
+    </div>
+
+    <!-- 2. 工作区抽屉 (下方) -->
+    <div class="drawer-menu workspace-drawer">
+        <div class="drawer-toggle">📚</div>
+        <div class="drawer-content">
+            <div class="drawer-title">工作区管理</div>
+            <button class="drawer-btn" id="btn-new-ws">
+                <span>➕</span> 新建工作区
+            </button>
+            <button class="drawer-btn danger" id="btn-del-ws">
+                <span>❌</span> 删除当前页
+            </button>
+            
+            <div class="drawer-divider"></div>
+            
+            <div class="drawer-title">切换工作区</div>
+            <div id="workspace-list">
+                <!-- JS 动态生成 -->
+            </div>
         </div>
     </div>
 
@@ -48,7 +70,13 @@
         let panX = 0;
         let panY = 0;
         let scale = 1;
-        window.currentScale = scale; // 暴露给 Card 组件使用
+        window.currentScale = scale; 
+
+        // --- 工作区状态 ---
+        let currentWorkspaceId = 'default';
+        let workspaces = {
+            'default': { name: '默认工作区', data: [] }
+        };
 
         // --- 核心功能：画布操作 ---
         function updateCanvas() {
@@ -79,12 +107,6 @@
 
             document.addEventListener('mousemove', (e) => {
                 if (!isPanning) return;
-                // 拖拽画布本身不需要除以 scale，因为我们是在移动视口
-                // 等等，之前的逻辑里，panX 是平移量，translate 在 scale 之后应用？
-                // 在 CSS: scale() translate()
-                // 如果 panX 是逻辑坐标，那么视觉位移 = panX * scale
-                // 我们希望视觉位移 = 鼠标位移
-                // 所以 panX * scale = mouseDelta -> panX = mouseDelta / scale
                 const dx = (e.clientX - startX) / scale;
                 const dy = (e.clientY - startY) / scale;
                 panX = startPanX + dx;
@@ -121,13 +143,12 @@
             let x, y, content, color, zIndex;
 
             if (data) {
-                x = parseFloat(data.left); // 去掉 px
+                x = parseFloat(data.left); 
                 y = parseFloat(data.top);
                 zIndex = data.zIndex;
                 content = data.content;
                 color = data.color;
             } else {
-                // 新建
                 x = (window.innerWidth / 2 - 100) / scale - panX;
                 y = (window.innerHeight / 2 - 75) / scale - panY;
                 x += (Math.random() - 0.5) * 60;
@@ -141,19 +162,110 @@
         }
 
         function clearAll() {
-            if(confirm('确定要清空所有卡片吗？')) {
+            if(confirm('确定要清空当前工作区的所有卡片吗？')) {
                 document.getElementById('board').innerHTML = '';
                 saveToStorage();
             }
         }
 
-        // --- 数据持久化 ---
+        // --- 工作区管理 ---
+        function renderWorkspaceList() {
+            const list = document.getElementById('workspace-list');
+            list.innerHTML = '';
+            
+            Object.keys(workspaces).forEach(id => {
+                const ws = workspaces[id];
+                const item = document.createElement('div');
+                item.className = `workspace-item ${id === currentWorkspaceId ? 'active' : ''}`;
+                item.innerHTML = `
+                    <span>${ws.name}</span>
+                    <span class="check-icon">✔</span>
+                `;
+                item.onclick = () => switchWorkspace(id);
+                list.appendChild(item);
+            });
+        }
+
+        function switchWorkspace(id) {
+            if (id === currentWorkspaceId) return;
+            
+            // 1. 保存当前现场
+            saveToStorage(); 
+            
+            // 2. 切换 ID
+            currentWorkspaceId = id;
+            
+            // 3. 加载新现场
+            loadWorkspaceData(id);
+            renderWorkspaceList();
+            
+            // 4. 保存一下“当前选中的是哪个”，防止刷新后跳回默认
+            localStorage.setItem('current_workspace_id', id);
+        }
+
+        function createWorkspace() {
+            const name = prompt("请输入新工作区的名称：", `工作区 ${Object.keys(workspaces).length + 1}`);
+            if (!name) return;
+            
+            const id = 'ws_' + Date.now();
+            workspaces[id] = {
+                name: name,
+                data: [], // 卡片数据
+                canvas: { panX: 0, panY: 0, scale: 1 } // 每个工作区有独立的画布状态
+            };
+            
+            switchWorkspace(id);
+        }
+
+        function deleteWorkspace() {
+            if (Object.keys(workspaces).length <= 1) {
+                alert("至少需要保留一个工作区！");
+                return;
+            }
+            
+            if (confirm(`确定要删除工作区 "${workspaces[currentWorkspaceId].name}" 吗？此操作不可恢复！`)) {
+                delete workspaces[currentWorkspaceId];
+                
+                // 切换到第一个可用的工作区
+                const nextId = Object.keys(workspaces)[0];
+                switchWorkspace(nextId);
+            }
+        }
+
+        function loadWorkspaceData(id) {
+            // 清空画布
+            document.getElementById('board').innerHTML = '';
+            
+            const ws = workspaces[id];
+            
+            // 恢复画布状态
+            if (ws.canvas) {
+                panX = ws.canvas.panX || 0;
+                panY = ws.canvas.panY || 0;
+                scale = ws.canvas.scale || 1;
+            } else {
+                panX = 0; panY = 0; scale = 1;
+            }
+            updateCanvas();
+
+            // 恢复卡片
+            if (ws.data && ws.data.length > 0) {
+                ws.data.forEach(data => addCard(data));
+                const maxZ = Math.max(...ws.data.map(c => parseInt(c.zIndex) || 1));
+                zIndexCounter = maxZ + 1;
+            } else {
+                zIndexCounter = 1;
+            }
+        }
+
+        // --- 数据持久化 (重构版) ---
         function saveToStorage() {
-            const cards = [];
+            // 收集当前界面上的数据
+            const currentCards = [];
             document.querySelectorAll('.card').forEach(el => {
                 const textarea = el.querySelector('textarea');
                 const header = el.querySelector('.card-header');
-                cards.push({
+                currentCards.push({
                     left: el.style.left,
                     top: el.style.top,
                     width: el.style.width,
@@ -163,47 +275,60 @@
                     color: header.style.backgroundColor
                 });
             });
-            const canvasState = { panX, panY, scale };
-            localStorage.setItem('sticky_notes_data_v2', JSON.stringify(cards)); // 用个新key避免冲突
-            localStorage.setItem('sticky_canvas_state_v2', JSON.stringify(canvasState));
+            
+            // 更新内存中的数据对象
+            if (workspaces[currentWorkspaceId]) {
+                workspaces[currentWorkspaceId].data = currentCards;
+                workspaces[currentWorkspaceId].canvas = { panX, panY, scale };
+            }
+
+            // 写入硬盘
+            localStorage.setItem('all_workspaces_data', JSON.stringify(workspaces));
+            localStorage.setItem('current_workspace_id', currentWorkspaceId);
         }
 
         function loadFromStorage() {
-            const savedCanvas = localStorage.getItem('sticky_canvas_state_v2');
-            if (savedCanvas) {
-                const state = JSON.parse(savedCanvas);
-                panX = state.panX || 0;
-                panY = state.panY || 0;
-                scale = state.scale || 1;
-                updateCanvas();
-            }
-
-            const savedCards = localStorage.getItem('sticky_notes_data_v2');
-            if (savedCards) {
-                const cardsData = JSON.parse(savedCards);
-                if (cardsData.length > 0) {
-                    cardsData.forEach(data => addCard(data));
-                    const maxZ = Math.max(...cardsData.map(c => parseInt(c.zIndex) || 1));
-                    zIndexCounter = maxZ + 1;
+            // 1. 读取所有工作区
+            const savedWorkspaces = localStorage.getItem('all_workspaces_data');
+            if (savedWorkspaces) {
+                workspaces = JSON.parse(savedWorkspaces);
+            } else {
+                // 迁移旧数据逻辑 (如果有旧版数据，把它变成默认工作区)
+                const oldCards = localStorage.getItem('sticky_notes_data_v2');
+                const oldCanvas = localStorage.getItem('sticky_canvas_state_v2');
+                if (oldCards) {
+                    workspaces['default'].data = JSON.parse(oldCards);
+                    if (oldCanvas) workspaces['default'].canvas = JSON.parse(oldCanvas);
                 }
             }
+
+            // 2. 读取上次选中的 ID
+            const savedId = localStorage.getItem('current_workspace_id');
+            if (savedId && workspaces[savedId]) {
+                currentWorkspaceId = savedId;
+            } else {
+                currentWorkspaceId = Object.keys(workspaces)[0];
+            }
+
+            // 3. 渲染
+            renderWorkspaceList();
+            loadWorkspaceData(currentWorkspaceId);
         }
 
-        // --- 导入导出 ---
+        // --- 导入导出 (升级版：支持导出所有工作区) ---
         function exportData() {
-            const cards = localStorage.getItem('sticky_notes_data_v2');
-            const canvas = localStorage.getItem('sticky_canvas_state_v2');
-            if (!cards && !canvas) return alert('没有数据');
+            saveToStorage(); // 导出前先保存一下
             
             const blob = new Blob([JSON.stringify({
-                cards: JSON.parse(cards || '[]'),
-                canvas: JSON.parse(canvas || '{}')
+                version: 3, // 版本号升级
+                workspaces: workspaces,
+                currentId: currentWorkspaceId
             }, null, 2)], { type: 'application/json' });
             
             const url = URL.createObjectURL(blob);
             const a = document.createElement('a');
             a.href = url;
-            a.download = `backup-${new Date().toISOString().slice(0,10)}.json`;
+            a.download = `backup-all-${new Date().toISOString().slice(0,10)}.json`;
             a.click();
         }
 
@@ -212,15 +337,39 @@
             reader.onload = (e) => {
                 try {
                     const data = JSON.parse(e.target.result);
-                    if (confirm(`导入 ${data.cards.length} 张卡片？`)) {
-                        localStorage.setItem('sticky_notes_data_v2', JSON.stringify(data.cards));
-                        localStorage.setItem('sticky_canvas_state_v2', JSON.stringify(data.canvas));
-                        document.getElementById('board').innerHTML = '';
-                        loadFromStorage();
+                    
+                    // 兼容性处理
+                    let newWorkspaces = {};
+                    
+                    if (data.workspaces) {
+                        // 新版备份
+                        newWorkspaces = data.workspaces;
+                    } else if (data.cards) {
+                        // 旧版备份 -> 转为一个新工作区
+                        newWorkspaces = {
+                            ['ws_' + Date.now()]: {
+                                name: '导入的备份',
+                                data: data.cards,
+                                canvas: data.canvas || {}
+                            }
+                        };
+                    } else {
+                        throw new Error('格式无法识别');
                     }
-                } catch(err) { alert('导入失败'); }
+
+                    if (confirm(`即将导入备份，这将覆盖当前所有数据！确定吗？`)) {
+                        workspaces = newWorkspaces;
+                        currentWorkspaceId = Object.keys(workspaces)[0];
+                        
+                        saveToStorage();
+                        renderWorkspaceList();
+                        loadWorkspaceData(currentWorkspaceId);
+                        alert('导入成功！');
+                    }
+                } catch(err) { alert('导入失败: ' + err.message); }
             };
             reader.readAsText(file);
+            document.getElementById('importFile').value = '';
         }
 
         // --- 初始化绑定 ---
@@ -229,11 +378,13 @@
         document.getElementById('btn-export').onclick = exportData;
         document.getElementById('btn-import').onclick = () => document.getElementById('importFile').click();
         document.getElementById('importFile').onchange = (e) => importData(e.target.files[0]);
+        
+        // 新按钮绑定
+        document.getElementById('btn-new-ws').onclick = createWorkspace;
+        document.getElementById('btn-del-ws').onclick = deleteWorkspace;
 
-        // 监听来自 Card 组件的保存请求
         window.addEventListener('save-data', saveToStorage);
         
-        // 启动
         initCanvasDrag();
         loadFromStorage();
 
